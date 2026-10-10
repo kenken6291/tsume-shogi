@@ -25,9 +25,9 @@
   const ZEN = ['０', '１', '２', '３', '４', '５', '６', '７', '８', '９'];
   const KAN = ['一', '二', '三', '四', '五', '六', '七', '八', '九'];
 
-  const baseOf = (p) => p.replace('+', '').toUpperCase();
+  const baseOf = (p) => (p.length === 2 ? p[1] : p).toUpperCase();
   const sideOf = (p) => { const c = p[p.length - 1]; return c === c.toUpperCase() ? 0 : 1; };
-  const isPromoted = (p) => p[0] === '+';
+  const isPromoted = (p) => p.length === 2;
   const keyOf = (p) => (isPromoted(p) ? '+' : '') + baseOf(p);
   const inB = (r, c) => r >= 0 && r < 9 && c >= 0 && c < 9;
   const emptyHand = () => ({ R: 0, B: 0, G: 0, S: 0, N: 0, L: 0, P: 0 });
@@ -116,6 +116,8 @@
   }
 
   /* ---------- 移動ルール ---------- */
+  const ALL_SQUARES = [];
+  for (let r = 0; r < 9; r++) for (let c = 0; c < 9; c++) ALL_SQUARES.push([r, c]);
   const inZone = (side, r) => (side === 0 ? r <= 2 : r >= 6);
   function mustPromote(p, side, r) {
     if (isPromoted(p)) return false;
@@ -125,7 +127,7 @@
     return false;
   }
 
-  function pseudoMoves(pos) {
+  function pseudoMoves(pos, dropSquares) {
     const side = pos.turn, B = pos.board, out = [];
     const d = side === 0 ? 1 : -1;
     for (let r = 0; r < 9; r++) for (let c = 0; c < 9; c++) {
@@ -158,10 +160,11 @@
       const p = B[r][c];
       if (p && p === (side === 0 ? 'P' : 'p')) pawnFiles[c] = true;
     }
+    const squares = dropSquares || ALL_SQUARES;
     for (const t of HAND_ORDER) {
       if (!hand[t]) continue;
       const piece = side === 0 ? t : t.toLowerCase();
-      for (let r = 0; r < 9; r++) for (let c = 0; c < 9; c++) {
+      for (const [r, c] of squares) {
         if (B[r][c]) continue;
         if (mustPromote(t, side, r)) continue;
         if (t === 'P' && pawnFiles[c]) continue;
@@ -172,60 +175,133 @@
   }
 
   function makeMove(pos, m) {
-    const board = pos.board.map((r) => r.slice());
+    const board = pos.board.slice();
     const hands = [Object.assign({}, pos.hands[0]), Object.assign({}, pos.hands[1])];
     const side = pos.turn;
+    const kings = pos.kings ? pos.kings.slice() : undefined;
+    const tr = m.to[0];
+    board[tr] = board[tr].slice();
     if (m.drop) {
       hands[side][m.drop]--;
-      board[m.to[0]][m.to[1]] = side === 0 ? m.drop : m.drop.toLowerCase();
+      board[tr][m.to[1]] = side === 0 ? m.drop : m.drop.toLowerCase();
     } else {
-      const p = board[m.from[0]][m.from[1]];
-      const cap = board[m.to[0]][m.to[1]];
+      const fr = m.from[0];
+      if (fr !== tr) board[fr] = board[fr].slice();
+      const p = board[fr][m.from[1]];
+      const cap = board[tr][m.to[1]];
       if (cap && baseOf(cap) !== 'K') hands[side][baseOf(cap)]++;
-      board[m.from[0]][m.from[1]] = null;
-      board[m.to[0]][m.to[1]] = m.promote ? '+' + p : p;
+      board[fr][m.from[1]] = null;
+      board[tr][m.to[1]] = m.promote ? '+' + p : p;
+      if (kings && (p === 'K' || p === 'k')) kings[side] = [tr, m.to[1]];
     }
-    return { board, hands, turn: 1 - side };
+    const np = { board, hands, turn: 1 - side };
+    if (kings) np.kings = kings;
+    return np;
   }
 
   function findKing(pos, side) {
+    if (pos.kings && pos.kings[side] !== undefined) return pos.kings[side];
     const k = side === 0 ? 'K' : 'k';
-    for (let r = 0; r < 9; r++) for (let c = 0; c < 9; c++) if (pos.board[r][c] === k) return [r, c];
-    return null;
+    let found = null;
+    for (let r = 0; r < 9 && !found; r++) for (let c = 0; c < 9; c++) if (pos.board[r][c] === k) { found = [r, c]; break; }
+    if (!pos.kings) pos.kings = [undefined, undefined];
+    pos.kings[side] = found;
+    return found;
   }
 
-  function attacked(B, r, c, by) {
-    const d = by === 0 ? 1 : -1;
-    for (let i = 0; i < 9; i++) for (let j = 0; j < 9; j++) {
-      const p = B[i][j];
-      if (!p || sideOf(p) !== by) continue;
-      const v = vec(p);
-      for (const [dr, dc] of v.steps) if (i + dr * d === r && j + dc * d === c) return true;
-      for (const [dr, dc] of v.slides) {
-        let tr = i + dr * d, tc = j + dc * d;
-        while (inB(tr, tc)) {
-          if (tr === r && tc === c) return true;
-          if (B[tr][tc]) break;
-          tr += dr * d; tc += dc * d;
-        }
-      }
-    }
+  const DIRS8 = [[-1, -1], [-1, 0], [-1, 1], [0, -1], [0, 1], [1, -1], [1, 0], [1, 1]];
+  /** 駒pが（盤上の向きで）(dr,dc)方向・距離distの相手に利くか */
+  function pieceHits(p, dr, dc, dist, by) {
+    const d = by === 0 ? 1 : -1, v = vec(p), ldr = dr * d, ldc = dc * d;
+    if (dist === 1) for (const [a, b] of v.steps) if (a === ldr && b === ldc) return true;
+    for (const [a, b] of v.slides) if (a === ldr && b === ldc) return true;
     return false;
   }
+  /** (r,c) に利いている by 側の駒の一覧（玉から逆にたどる高速版） */
+  function attackersOf(B, r, c, by, firstOnly) {
+    const res = [];
+    for (const [dr, dc] of DIRS8) {
+      let i = r + dr, j = c + dc, dist = 1;
+      while (inB(i, j)) {
+        const p = B[i][j];
+        if (p) {
+          if (sideOf(p) === by && pieceHits(p, -dr, -dc, dist, by)) {
+            res.push({ r: i, c: j, dist, dr, dc });
+            if (firstOnly) return res;
+          }
+          break;
+        }
+        i += dr; j += dc; dist++;
+      }
+    }
+    const d = by === 0 ? 1 : -1, kn = by === 0 ? 'N' : 'n';
+    for (const dc of [-1, 1]) {
+      const i = r + 2 * d, j = c + dc;
+      if (inB(i, j) && B[i][j] === kn) { res.push({ r: i, c: j, dist: 1, dr: 2 * d, dc }); if (firstOnly) return res; }
+    }
+    return res;
+  }
+  const attacked = (B, r, c, by) => attackersOf(B, r, c, by, true).length > 0;
 
   function inCheck(pos, side) {
     const k = findKing(pos, side);
     return k ? attacked(pos.board, k[0], k[1], 1 - side) : false;
   }
 
-  /** 合法手を {m, np} の組で返す（np=指した後の局面） */
+  /** (r,c)に置いた駒pが (tr,tc) に直接利くか */
+  function hitsFrom(B, r, c, p, tr, tc) {
+    const side = sideOf(p), d = side === 0 ? 1 : -1;
+    if (baseOf(p) === 'N' && !isPromoted(p)) return tr === r - 2 * d && Math.abs(tc - c) === 1;
+    const dr = tr - r, dc = tc - c;
+    if (dr !== 0 && dc !== 0 && Math.abs(dr) !== Math.abs(dc)) return false;
+    const ur = Math.sign(dr), uc = Math.sign(dc), dist = Math.max(Math.abs(dr), Math.abs(dc));
+    if (!pieceHits(p, ur, uc, dist, side)) return false;
+    for (let k = 1; k < dist; k++) if (B[r + ur * k][c + uc * k]) return false;
+    return true;
+  }
+
+  /**
+   * 合法手を {m, np} の組で返す（np=指した後の局面）
+   * opts.checksOnly: 王手になる手だけ  opts.limit: 件数上限  opts.skipUchifuzume: 打ち歩詰め判定を省略
+   */
   function legalPairs(pos, opts) {
     opts = opts || {};
+    const side = pos.turn, B = pos.board;
+    let drops = null; // 打てるマスの候補（null=全マス）
+    const myK = findKing(pos, side);
+    if (myK) {
+      const chk = attackersOf(B, myK[0], myK[1], 1 - side, false);
+      if (chk.length) {
+        // 王手されている：合駒は飛び駒との間のマスだけ
+        drops = [];
+        if (chk.length === 1 && chk[0].dist > 1) {
+          for (let k = 1; k < chk[0].dist; k++) drops.push([myK[0] + chk[0].dr * k, myK[1] + chk[0].dc * k]);
+        }
+      }
+    }
+    if (opts.checksOnly) {
+      const ek = findKing(pos, 1 - side);
+      if (!ek) return [];
+      // 玉から8方向の空きマスと桂の位置だけが王手になる打ち場所の候補
+      const cand = [];
+      for (const [dr, dc] of DIRS8) {
+        let i = ek[0] + dr, j = ek[1] + dc;
+        while (inB(i, j) && !B[i][j]) { cand.push([i, j]); i += dr; j += dc; }
+      }
+      const d = side === 0 ? 1 : -1;
+      for (const dc of [-1, 1]) { const i = ek[0] + 2 * d, j = ek[1] + dc; if (inB(i, j) && !B[i][j]) cand.push([i, j]); }
+      const filtered = [];
+      const allow = drops ? new Set(drops.map(([r, c]) => r * 9 + c)) : null;
+      for (const sq of cand) if (!allow || allow.has(sq[0] * 9 + sq[1])) filtered.push(sq);
+      drops = filtered;
+    }
     const res = [];
-    for (const m of pseudoMoves(pos)) {
+    for (const m of pseudoMoves(pos, drops)) {
       const np = makeMove(pos, m);
-      if (inCheck(np, pos.turn)) continue;
-      if (!opts.skipUchifuzume && m.drop === 'P' && inCheck(np, np.turn) &&
+      if (inCheck(np, side)) continue;
+      const givesCheck = (opts.checksOnly || m.drop === 'P') ? inCheck(np, np.turn) : false;
+      if (opts.checksOnly && !givesCheck) continue;
+      if (!opts.skipUchifuzume && m.drop === 'P' && givesCheck &&
           legalPairs(np, { skipUchifuzume: true, limit: 1 }).length === 0) continue; // 打ち歩詰め
       res.push({ m, np });
       if (opts.limit && res.length >= opts.limit) break;
@@ -287,18 +363,33 @@
   function makeCtx(budget) { return { nodes: 0, budget: budget || 150000, memo: new Map() }; }
   function tick(ctx) { if (++ctx.nodes > ctx.budget) throw BUDGET; }
 
+  /** 置換表：局面ごとに「n手以内で詰む最小n」「n手以内では詰まない最大n」を覚える */
+  function memoGet(ctx, key, n) {
+    const e = ctx.memo.get(key);
+    if (!e) return undefined;
+    if (e.t <= n) return true;
+    if (e.f >= n) return false;
+    return undefined;
+  }
+  function memoSet(ctx, key, n, ok) {
+    let e = ctx.memo.get(key);
+    if (!e) { e = { t: Infinity, f: -1 }; ctx.memo.set(key, e); }
+    if (ok) { if (n < e.t) e.t = n; } else if (n > e.f) e.f = n;
+  }
+
   /** 攻方手番。n手以内（n:残り手数, 奇数）に詰むか */
   function orNode(pos, n, ctx) {
     if (n < 1) return false;
     tick(ctx);
-    const key = 'o' + n + posKey(pos);
-    if (ctx.memo.has(key)) return ctx.memo.get(key);
+    const key = 'o' + posKey(pos);
+    const hit = memoGet(ctx, key, n);
+    if (hit !== undefined) return hit;
     let ok = false;
-    const checks = legalPairs(pos).filter((x) => inCheck(x.np, x.np.turn));
+    const checks = legalPairs(pos, { checksOnly: true });
     // 取る手・成る手を先に読む
     checks.sort((a, b) => score(b.m, pos) - score(a.m, pos));
     for (const x of checks) { if (andNode(x.np, n - 1, ctx)) { ok = true; break; } }
-    ctx.memo.set(key, ok);
+    memoSet(ctx, key, n, ok);
     return ok;
   }
   function score(m, pos) {
@@ -310,18 +401,19 @@
   /** 玉方手番（王手されている）。k手(偶数)以内に必ず詰むか */
   function andNode(pos, k, ctx) {
     tick(ctx);
-    const key = 'a' + k + posKey(pos);
-    if (ctx.memo.has(key)) return ctx.memo.get(key);
-    const ev = legalPairs(pos);
+    const key = 'a' + posKey(pos);
+    const hit = memoGet(ctx, key, k);
+    if (hit !== undefined) return hit;
     let ok;
+    if (k < 2) { ok = legalPairs(pos, { limit: 1 }).length === 0; memoSet(ctx, key, k, ok); return ok; }
+    const ev = legalPairs(pos);
     if (ev.length === 0) ok = true;
-    else if (k < 2) ok = false;
     else {
       // 玉の移動 → 駒取り → 合駒 の順に反証を探す
       ev.sort((a, b) => defScore(b.m, pos) - defScore(a.m, pos));
       ok = ev.every((x) => orNode(x.np, k - 1, ctx));
     }
-    ctx.memo.set(key, ok);
+    memoSet(ctx, key, k, ok);
     return ok;
   }
   function defScore(m, pos) {
@@ -353,13 +445,13 @@
     return null;
   }
   /** 解答手順(USI配列)を探索で生成 */
-  function solve(startPos, maxN, budget) {
-    const ctx = makeCtx(budget || 400000);
+  function solve(startPos, maxN, budget, sharedCtx) {
+    const ctx = sharedCtx || makeCtx(budget || 400000);
     const n = mateLength(startPos, maxN || 9, ctx);
     if (n < 0) return null;
     const line = []; let pos = startPos, rem = n;
     while (rem > 0) {
-      const mv = legalPairs(pos).filter((x) => inCheck(x.np, x.np.turn))
+      const mv = legalPairs(pos, { checksOnly: true })
         .find((x) => andNode(x.np, rem - 1, ctx));
       if (!mv) break;
       line.push(moveToUSI(mv.m)); pos = mv.np; rem--;

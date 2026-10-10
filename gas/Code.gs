@@ -19,7 +19,7 @@
  * POST {action:'hint'|'explain', ...}       Content-Type: text/plain で送信
  */
 
-const API_VERSION = '1.2.0';   // Code.gs を変えたら上げる
+const API_VERSION = '1.3.0';   // Code.gs を変えたら上げる
 const SHEET_NAME = 'problems';
 const HEADERS = ['id', 'moves', 'sfen', 'solution', 'difficulty', 'title', 'comment'];
 const CACHE_TTL = 21600;      // 6時間
@@ -316,6 +316,7 @@ function importFromDrive() {
   let read = 0, dup = 0;
   files.forEach(function (f) {
     const parsed = parseImport_(f.getBlob().getDataAsString('UTF-8'));
+    console.log(f.getName() + '： ' + parsed.length + '問');
     parsed.forEach(function (p) {
       read++;
       const reason = validateProblem_(p.sfen, p.solution);
@@ -330,6 +331,8 @@ function importFromDrive() {
         p.difficulty || '', p.title || '', p.comment || '']);
     });
   });
+  if (!read) throw new Error('問題を1問も読み取れませんでした。対象ファイル: ' +
+    files.map(function (f) { return f.getName(); }).join(', '));
   if (rows.length) sh.getRange(sh.getLastRow() + 1, 1, rows.length, HEADERS.length).setValues(rows);
 
   // エラー一覧（毎回作り直し）
@@ -346,26 +349,39 @@ function importFromDrive() {
   return msg;
 }
 
-/** IMPORT_FOLDER_ID / IMPORT_FILE_ID から対象ファイル一覧を作る（名前順） */
+/**
+ * IMPORT_FOLDER_ID / IMPORT_FILE_ID から対象ファイル一覧を作る（名前順）
+ * どちらのプロパティに入っていても、IDがフォルダならフォルダ内の全ファイル、ファイルならその1件を対象にする
+ */
 function importFiles_() {
   const pickId = function (v) {
     const m = String(v || '').match(/[-\w]{25,}/);
     return m ? m[0] : '';
   };
-  const folderId = pickId(props_().getProperty('IMPORT_FOLDER_ID'));
-  const fileId = pickId(props_().getProperty('IMPORT_FILE_ID'));
+  const ids = [props_().getProperty('IMPORT_FOLDER_ID'), props_().getProperty('IMPORT_FILE_ID')]
+    .map(pickId).filter(String);
+  if (!ids.length) throw new Error('スクリプトプロパティ IMPORT_FOLDER_ID にフォルダのIDを設定してください');
+
   const out = [];
-  if (folderId) {
-    const it = DriveApp.getFolderById(folderId).getFiles();
-    while (it.hasNext()) {
-      const f = it.next();
-      if (/\.(txt|sfen|json|csv|tsv)$/i.test(f.getName()) || f.getMimeType() === 'text/plain') out.push(f);
+  const seenIds = {};
+  ids.forEach(function (id) {
+    if (seenIds[id]) return;
+    seenIds[id] = true;
+    let folder = null;
+    try { folder = DriveApp.getFolderById(id); folder.getName(); } catch (e) { folder = null; }
+    if (folder) {
+      const it = folder.getFiles();
+      while (it.hasNext()) {
+        const f = it.next();
+        if (/\.(txt|sfen|json|csv|tsv)$/i.test(f.getName()) || f.getMimeType() === 'text/plain') out.push(f);
+      }
+      console.log('フォルダ「' + folder.getName() + '」から ' + out.length + ' ファイル');
+    } else {
+      const f = DriveApp.getFileById(id);
+      out.push(f);
+      console.log('ファイル「' + f.getName() + '」');
     }
-  } else if (fileId) {
-    out.push(DriveApp.getFileById(fileId));
-  } else {
-    throw new Error('IMPORT_FOLDER_ID（フォルダ）か IMPORT_FILE_ID（ファイル）を設定してください');
-  }
+  });
   // 「詰将棋2」が「詰将棋10」より前に来るよう数字を考慮して並べる
   const norm = function (s) { return s.normalize('NFKC').replace(/\d+/g, function (d) { return ('0000000' + d).slice(-8); }); };
   return out.sort(function (a, b) { return norm(a.getName()) < norm(b.getName()) ? -1 : 1; });

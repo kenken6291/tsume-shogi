@@ -70,7 +70,7 @@ while (out.length < want && Date.now() - t0 < seconds * 1000) {
     for (let n = 1; n < target; n += 2) if (S.orNode(pos, n, ctx)) { shorter = true; break; }
     if (shorter || !S.orNode(pos, target, ctx)) continue;
     const ctx2 = S.makeCtx(400000);
-    const firsts = S.legalPairs(pos).filter((x) => S.inCheck(x.np, 1) && S.andNode(x.np, target - 1, ctx2));
+    const firsts = S.legalPairs(pos, { checksOnly: true }).filter((x) => S.andNode(x.np, target - 1, ctx2));
     if (firsts.length !== 1) continue;
     const sol = S.solve(pos, target, 600000);
     if (!sol || sol.length !== target) continue;

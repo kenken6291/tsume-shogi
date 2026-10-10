@@ -10,6 +10,6 @@ window.APP_CONFIG = {
   HUB_URL: 'https://kenken6291.github.io/retro-arcade-hub/',
 
   // バージョン情報（更新のたびに書き換え）
-  APP_VERSION: '1.2.0',
+  APP_VERSION: '1.3.0',
   APP_UPDATED: '2026-10-10',
 };
