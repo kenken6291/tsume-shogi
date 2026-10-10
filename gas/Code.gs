@@ -5,7 +5,8 @@
  *   SPREADSHEET_ID   問題データのスプレッドシートID（必須）
  *   GEMINI_API_KEY   Gemini APIキー（AIヒント・解説を使う場合）
  *   GEMINI_MODEL     使うモデル名（省略時 gemini-2.5-flash）
- *   IMPORT_FILE_ID   取り込み用のDriveファイルID（importFromDrive用）
+ *   IMPORT_FOLDER_ID 取り込み用のDriveフォルダID（URLのままでも可）
+ *   IMPORT_FILE_ID   1ファイルだけ取り込む場合のファイルID
  *   AI_PER_MINUTE    AI呼び出し上限/分（省略時 20）
  *
  * シート「problems」の列: id | moves | sfen | solution | difficulty | title | comment
@@ -18,7 +19,7 @@
  * POST {action:'hint'|'explain', ...}       Content-Type: text/plain で送信
  */
 
-const API_VERSION = '1.1.0';   // Code.gs を変えたら上げる
+const API_VERSION = '1.2.0';   // Code.gs を変えたら上げる
 const SHEET_NAME = 'problems';
 const HEADERS = ['id', 'moves', 'sfen', 'solution', 'difficulty', 'title', 'comment'];
 const CACHE_TTL = 21600;      // 6時間
@@ -276,23 +277,31 @@ function setupSheet() {
 }
 
 /**
- * Drive上のファイル（IMPORT_FILE_ID）から問題を追記する。
- * 対応形式（1行1問、# で始まる行は無視）:
- *   1) sfen <盤面> <手番> <持駒> <手数> moves <USI手順...>
- *   2) position sfen ... moves ...
- *   3) TSV: SFEN<TAB>USI手順<TAB>タイトル<TAB>コメント
- *   4) SFENのみ（解答はフロント側で自動計算）
- *   5) JSON配列: [{ "sfen": "...", "solution": "..." または ["..",".."], "title": "", "comment": "", "difficulty": 0 }]
- * 既に同じSFENがある問題は追加しません。
+ * Googleドライブから問題を取り込む（検証付き）
+ *
+ * スクリプトプロパティ IMPORT_FOLDER_ID に「フォルダ」のID（またはURL）を入れると、
+ * フォルダ内の .txt / .sfen / .json をすべて読み込みます。
+ * IMPORT_FILE_ID に1ファイルだけ指定することもできます。
+ *
+ * 1問ずつ将棋エンジン（shogi.gs）で検証し、
+ *   - 正しい問題 → シート「problems」に追加
+ *   - 不正な問題 → シート「import_errors」に理由つきで記録（取り込まない）
+ * 同じ局面の問題は1つにまとめます。
+ *
+ * 対応形式（# で始まる行はコメント。直前の「# No.123」はタイトルとして保存）:
+ *   sfen <盤面> <手番> <持駒> <手数> moves <USI手順...>
+ *   position sfen ... moves ...
+ *   SFEN<TAB>USI手順<TAB>タイトル<TAB>コメント
+ *   SFENのみ（解答はフロント側で自動計算）
+ *   JSON配列 [{ "sfen": "...", "solution": "..." }]
  */
 function importFromDrive() {
-  const fileId = props_().getProperty('IMPORT_FILE_ID');
-  if (!fileId) throw new Error('IMPORT_FILE_ID が未設定です');
-  const text = DriveApp.getFileById(fileId).getBlob().getDataAsString('UTF-8');
-  const parsed = parseImport_(text);
+  const files = importFiles_();
+  if (!files.length) throw new Error('取り込むファイルが見つかりません');
 
   setupSheet();
-  const sh = ss_().getSheetByName(SHEET_NAME);
+  const ss = ss_();
+  const sh = ss.getSheetByName(SHEET_NAME);
   const last = sh.getLastRow();
   const existing = {};
   let maxId = 0;
@@ -302,18 +311,86 @@ function importFromDrive() {
       existing[normSfen_(r[2])] = true;
     });
   }
-  const rows = [];
-  parsed.forEach(function (p) {
-    const key = normSfen_(p.sfen);
-    if (!key || existing[key]) return;
-    existing[key] = true;
-    const sol = p.solution.join(' ');
-    rows.push([++maxId, p.solution.length || p.moves || '', p.sfen, sol, p.difficulty || '', p.title || '', p.comment || '']);
+
+  const rows = [], errors = [];
+  let read = 0, dup = 0;
+  files.forEach(function (f) {
+    const parsed = parseImport_(f.getBlob().getDataAsString('UTF-8'));
+    parsed.forEach(function (p) {
+      read++;
+      const reason = validateProblem_(p.sfen, p.solution);
+      if (reason) {
+        errors.push([f.getName(), p.title || '', p.sfen, p.solution.join(' '), reason]);
+        return;
+      }
+      const key = normSfen_(p.sfen);
+      if (existing[key]) { dup++; return; }
+      existing[key] = true;
+      rows.push([++maxId, p.solution.length || p.moves || '', p.sfen, p.solution.join(' '),
+        p.difficulty || '', p.title || '', p.comment || '']);
+    });
   });
   if (rows.length) sh.getRange(sh.getLastRow() + 1, 1, rows.length, HEADERS.length).setValues(rows);
+
+  // エラー一覧（毎回作り直し）
+  let es = ss.getSheetByName('import_errors');
+  if (!es) es = ss.insertSheet('import_errors');
+  es.clear();
+  es.getRange(1, 1, 1, 5).setValues([['file', 'title', 'sfen', 'moves', 'reason']]).setFontWeight('bold');
+  if (errors.length) es.getRange(2, 1, errors.length, 5).setValues(errors);
+
   clearCache();
-  console.log('取り込み: ' + rows.length + '問を追加（読み取り ' + parsed.length + '件）');
-  return rows.length;
+  const msg = 'ファイル ' + files.length + '件 / 読み取り ' + read + '問 → 追加 ' + rows.length +
+    '問、重複 ' + dup + '問、不正 ' + errors.length + '問（不正な問題は import_errors シート参照）';
+  console.log(msg);
+  return msg;
+}
+
+/** IMPORT_FOLDER_ID / IMPORT_FILE_ID から対象ファイル一覧を作る（名前順） */
+function importFiles_() {
+  const pickId = function (v) {
+    const m = String(v || '').match(/[-\w]{25,}/);
+    return m ? m[0] : '';
+  };
+  const folderId = pickId(props_().getProperty('IMPORT_FOLDER_ID'));
+  const fileId = pickId(props_().getProperty('IMPORT_FILE_ID'));
+  const out = [];
+  if (folderId) {
+    const it = DriveApp.getFolderById(folderId).getFiles();
+    while (it.hasNext()) {
+      const f = it.next();
+      if (/\.(txt|sfen|json|csv|tsv)$/i.test(f.getName()) || f.getMimeType() === 'text/plain') out.push(f);
+    }
+  } else if (fileId) {
+    out.push(DriveApp.getFileById(fileId));
+  } else {
+    throw new Error('IMPORT_FOLDER_ID（フォルダ）か IMPORT_FILE_ID（ファイル）を設定してください');
+  }
+  // 「詰将棋2」が「詰将棋10」より前に来るよう数字を考慮して並べる
+  const norm = function (s) { return s.normalize('NFKC').replace(/\d+/g, function (d) { return ('0000000' + d).slice(-8); }); };
+  return out.sort(function (a, b) { return norm(a.getName()) < norm(b.getName()) ? -1 : 1; });
+}
+
+/** 問題の検証。正しければ空文字、不正なら理由を返す */
+function validateProblem_(sfen, sol) {
+  const S = Shogi;
+  let pos;
+  try { pos = S.parseSFEN(sfen); } catch (e) { return 'SFENが読めない（' + e.message + '）'; }
+  const att = pos.turn, def = 1 - att;
+  if (!S.findKing(pos, def)) return '玉方の玉がない';
+  if (S.inCheck(pos, def)) return '最初から玉に王手がかかっている';
+  if (!sol.length) return '';
+  if (sol.length % 2 === 0) return '手数が偶数（' + sol.length + '手）';
+  for (let i = 0; i < sol.length; i++) {
+    const m = S.findMoveByUSI(pos, sol[i]);
+    if (!m) return (i + 1) + '手目 ' + sol[i] + ' は指せない手';
+    const np = S.makeMove(pos, m);
+    if (i % 2 === 0 && !S.inCheck(np, np.turn)) return (i + 1) + '手目 ' + sol[i] + ' が王手になっていない';
+    pos = np;
+    if (i < sol.length - 1 && S.isMated(pos)) return (i + 1) + '手目で詰んでいる（手数が合わない）';
+  }
+  if (!S.isMated(pos)) return '最後の局面が詰んでいない';
+  return '';
 }
 
 function normSfen_(s) {
@@ -331,20 +408,28 @@ function parseImport_(text) {
     }).filter(function (p) { return p.sfen; });
   }
   const out = [];
+  let title = '';
   t.split(/\r?\n/).forEach(function (line) {
     line = line.trim();
-    if (!line || line.charAt(0) === '#') return;
+    if (!line) return;
+    if (line.charAt(0) === '#') {
+      const m = line.match(/No\.?\s*(\d+)/i);
+      if (m) title = 'No.' + m[1];
+      return;
+    }
     if (line.indexOf('\t') >= 0) {
       const c = line.split('\t');
       out.push({ sfen: completeSfen_(c[0]), solution: String(c[1] || '').trim().split(/\s+/).filter(String),
-        title: c[2] || '', comment: c[3] || '' });
+        title: c[2] || title, comment: c[3] || '' });
+      title = '';
       return;
     }
     let s = line.replace(/^position\s+/, '').replace(/^sfen\s+/, '');
     let sol = [];
     const mi = s.search(/\smoves\s/);
     if (mi >= 0) { sol = s.slice(mi).replace(/^\s*moves\s+/, '').trim().split(/\s+/); s = s.slice(0, mi); }
-    out.push({ sfen: completeSfen_(s), solution: sol });
+    out.push({ sfen: completeSfen_(s), solution: sol, title: title });
+    title = '';
   });
   return out.filter(function (p) { return p.sfen; });
 }
@@ -353,6 +438,25 @@ function completeSfen_(s) {
   const p = String(s || '').trim().replace(/^sfen\s+/, '').split(/\s+/);
   if (p.length < 1 || p[0].split('/').length !== 9) return '';
   return [p[0], p[1] || 'b', p[2] || '-', p[3] || '1'].join(' ');
+}
+
+/** problemsシートの全問題を検証し直し、不正な行を import_errors に書き出す（削除はしない） */
+function checkAllProblems() {
+  const ss = ss_();
+  const sh = ss.getSheetByName(SHEET_NAME);
+  const vals = sh.getDataRange().getValues();
+  vals.shift();
+  const bad = [];
+  vals.forEach(function (r) {
+    const reason = validateProblem_(String(r[2]), String(r[3] || '').trim().split(/\s+/).filter(String));
+    if (reason) bad.push(['problems id=' + r[0], r[5] || '', r[2], r[3], reason]);
+  });
+  let es = ss.getSheetByName('import_errors');
+  if (!es) es = ss.insertSheet('import_errors');
+  es.clear();
+  es.getRange(1, 1, 1, 5).setValues([['file', 'title', 'sfen', 'moves', 'reason']]).setFontWeight('bold');
+  if (bad.length) es.getRange(2, 1, bad.length, 5).setValues(bad);
+  console.log('検証: ' + vals.length + '問中 不正 ' + bad.length + '問');
 }
 
 /** 動作確認用：エディタから実行してログを見る */

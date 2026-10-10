@@ -379,4 +379,4 @@
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.Shogi = api;
-})(typeof window !== 'undefined' ? window : this);
+})(typeof window !== 'undefined' ? window : globalThis);
