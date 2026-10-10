@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1A2238">
+<title>詰め将棋道場 | RETRO ARCADE HUB</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>☗</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DotGothic16&family=Shippori+Mincho+B1:wght@700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top">
+  <a id="hub-link" class="hub" href="https://kenken6291.github.io/retro-arcade-hub/">◀ アーケードに戻る</a>
+  <h1>詰め将棋道場</h1>
+</header>
+
+<main>
+  <!-- 問題一覧 -->
+  <section id="view-list">
+    <div class="tabs" id="filters" role="tablist" aria-label="手数で絞り込み"></div>
+    <div class="list-head">
+      <p id="progress"></p>
+      <button id="btn-random" class="btn primary">ランダムに出題</button>
+    </div>
+    <div id="grid" class="grid"></div>
+    <nav id="pager" class="pager" aria-label="ページ"></nav>
+    <p id="list-note" class="note"></p>
+  </section>
+
+  <!-- 対局画面 -->
+  <section id="view-play" hidden>
+    <div class="qbar">
+      <h2><span id="q-title">第—問</span><span id="q-moves" class="moves">—</span></h2>
+      <button id="btn-back" class="btn ghost">問題一覧</button>
+    </div>
+    <p id="q-memo" class="memo"></p>
+
+    <div class="table">
+      <div class="stand gote-stand"><span class="who">玉方</span><div id="hand-gote" class="hand"></div></div>
+
+      <div class="ban">
+        <div class="files" aria-hidden="true"><span>9</span><span>8</span><span>7</span><span>6</span><span>5</span><span>4</span><span>3</span><span>2</span><span>1</span></div>
+        <div class="ban-row">
+          <div id="board" class="board"></div>
+          <div class="ranks" aria-hidden="true"><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span><span>七</span><span>八</span><span>九</span></div>
+        </div>
+        <div id="stamp" class="stamp" hidden aria-hidden="true">詰</div>
+      </div>
+
+      <div class="stand sente-stand"><span class="who">攻方</span><div id="hand-sente" class="hand"></div></div>
+    </div>
+
+    <p id="msg" class="msg" role="status" aria-live="polite"></p>
+    <div id="kifu" class="kifu" aria-label="棋譜"></div>
+
+    <div class="controls">
+      <button id="btn-hint" class="btn">ヒント</button>
+      <button id="btn-undo" class="btn">一手戻す</button>
+      <button id="btn-reset" class="btn">最初から</button>
+      <button id="btn-answer" class="btn">答えを見る</button>
+      <button id="btn-explain" class="btn warn" hidden>なぜ詰まない？</button>
+    </div>
+    <div id="after" class="controls after" hidden>
+      <button id="btn-next" class="btn primary">次の問題</button>
+      <button id="btn-back2" class="btn ghost">問題一覧へ</button>
+    </div>
+  </section>
+</main>
+
+<footer class="foot">
+  <p id="version" class="version">v-</p>
+</footer>
+
+<dialog id="promo" class="promo" aria-label="成りの選択">
+  <p>成りますか？</p>
+  <div class="promo-btns">
+    <button id="promo-yes" class="pbtn"></button>
+    <button id="promo-no" class="pbtn"></button>
+  </div>
+</dialog>
+
+<script src="js/config.js"></script>
+<script src="js/shogi.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>

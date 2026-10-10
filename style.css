@@ -1,0 +1,209 @@
+/* 詰め将棋道場 — 藍の夜に榧の盤。UIはドット文字、駒は明朝。 */
+:root {
+  --ai: #1A2238;      /* 藍（背景） */
+  --ai-2: #26325A;    /* 藍（面） */
+  --ai-3: #34437A;    /* 藍（枠） */
+  --kaya: #DDB46A;    /* 榧（盤） */
+  --kaya-hi: #E8C98A;
+  --sumi: #2B2116;    /* 墨（罫線・駒文字） */
+  --washi: #F1E6CC;   /* 和紙（文字） */
+  --kin: #E9C46A;     /* 金（強調） */
+  --shu: #C23B2C;     /* 朱（成駒・印） */
+  --koke: #7FB685;    /* 苔（正解） */
+  --cell: min(10vw, 50px);
+  --ui: 'DotGothic16', 'Hiragino Kaku Gothic ProN', 'Meiryo', sans-serif;
+  --koma: 'Shippori Mincho B1', 'Hiragino Mincho ProN', 'Yu Mincho', serif;
+  box-sizing: border-box;
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+*, *::before, *::after { box-sizing: inherit; }
+html { height: 100%; }
+body {
+  margin: 0; min-height: 100%;
+  background:
+    repeating-linear-gradient(0deg, rgba(255,255,255,.018) 0 1px, transparent 1px 3px),
+    var(--ai);
+  color: var(--washi);
+  font-family: var(--ui);
+  font-size: 16px; line-height: 1.6;
+  -webkit-tap-highlight-color: transparent;
+}
+button { font: inherit; color: inherit; cursor: pointer; }
+button:focus-visible, a:focus-visible { outline: 3px solid var(--kin); outline-offset: 2px; }
+[hidden] { display: none !important; }
+
+/* ヘッダー */
+.top {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  max-width: 720px; margin: 0 auto; padding: 14px 16px 10px;
+  border-bottom: 2px solid var(--ai-3);
+}
+.top h1 {
+  margin: 0; font-size: 1.6rem; font-weight: 400; letter-spacing: .12em; color: var(--kin);
+  text-shadow: 3px 3px 0 #0E1424;
+}
+.hub { color: var(--washi); text-decoration: none; font-size: .9rem; padding: 6px 10px; border: 2px solid var(--ai-3); }
+.hub:hover { border-color: var(--kin); color: var(--kin); }
+
+main { max-width: 720px; margin: 0 auto; padding: 16px 16px 40px; }
+
+/* ボタン */
+.btn {
+  background: var(--ai-2); border: 2px solid var(--ai-3); padding: 8px 14px;
+  box-shadow: 3px 3px 0 #0E1424; transition: transform .06s;
+}
+.btn:hover:not(:disabled) { border-color: var(--kin); }
+.btn:active:not(:disabled) { transform: translate(2px, 2px); box-shadow: 1px 1px 0 #0E1424; }
+.btn:disabled { opacity: .4; cursor: default; }
+.btn.primary { background: var(--kin); color: var(--sumi); border-color: var(--kin); }
+.btn.ghost { background: transparent; box-shadow: none; }
+.btn.warn { border-color: var(--shu); color: #FFB4A8; }
+
+/* 一覧 */
+.tabs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
+.tab {
+  background: transparent; border: 2px solid var(--ai-3); padding: 6px 12px;
+  display: inline-flex; gap: 6px; align-items: baseline;
+}
+.tab small { font-size: .75rem; opacity: .7; }
+.tab[aria-selected="true"] { background: var(--washi); color: var(--ai); border-color: var(--washi); }
+.list-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 12px; }
+.list-head p { margin: 0; font-size: .9rem; opacity: .85; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(62px, 1fr)); gap: 6px; }
+.qbtn {
+  background: var(--ai-2); border: 2px solid var(--ai-3); padding: 6px 2px 4px;
+  display: flex; flex-direction: column; align-items: center; line-height: 1.2;
+}
+.qbtn span { font-size: 1.05rem; }
+.qbtn em { font-style: normal; font-size: .7rem; opacity: .65; }
+.qbtn:hover { border-color: var(--kin); }
+.qbtn.done { background: var(--kaya); color: var(--sumi); border-color: var(--kaya); }
+.qbtn.done em { opacity: .8; }
+.pager { display: flex; justify-content: center; align-items: center; gap: 14px; margin-top: 16px; }
+.pager button { background: var(--ai-2); border: 2px solid var(--ai-3); padding: 4px 12px; }
+.pager button:disabled { opacity: .35; }
+.note, .loading, .err { font-size: .85rem; opacity: .75; margin-top: 18px; }
+.err { color: #FFB4A8; opacity: 1; }
+
+/* 対局 */
+.qbar { display: flex; justify-content: space-between; align-items: center; }
+.qbar h2 { margin: 0; font-weight: 400; font-size: 1.3rem; display: flex; align-items: baseline; gap: 12px; }
+.qbar .moves { color: var(--kin); }
+.memo { margin: 2px 0 8px; min-height: 1em; font-size: .9rem; opacity: .8; }
+
+.table { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.stand {
+  width: calc(var(--cell) * 9 + 26px); display: flex; align-items: center; gap: 10px;
+  background: #1F2944; border: 2px solid var(--ai-3); padding: 4px 8px; min-height: calc(var(--cell) * .9);
+}
+.stand .who { font-size: .75rem; opacity: .7; writing-mode: vertical-rl; letter-spacing: .1em; }
+.hand { display: flex; flex-wrap: wrap; gap: 2px 6px; align-items: center; }
+.hand .none { font-size: .8rem; opacity: .5; }
+.hp {
+  position: relative; background: none; border: 2px solid transparent; padding: 0;
+  width: calc(var(--cell) * .82); height: calc(var(--cell) * .9);
+}
+.hand:not(.mine) .hp { cursor: default; }
+.hp i { position: absolute; right: -6px; bottom: -2px; font-style: normal; font-size: .8rem; color: var(--kin); }
+.hp.sel { border-color: var(--kin); background: rgba(233,196,106,.18); }
+
+.ban { position: relative; }
+.files { display: grid; grid-template-columns: repeat(9, var(--cell)); padding-left: 3px; font-size: .75rem; text-align: center; opacity: .7; }
+.ban-row { display: flex; }
+.ranks { display: grid; grid-template-rows: repeat(9, var(--cell)); font-size: .75rem; align-items: center; padding-left: 4px; opacity: .7; }
+.board {
+  display: grid; grid-template-columns: repeat(9, var(--cell)); grid-template-rows: repeat(9, var(--cell));
+  background: var(--kaya); border: 3px solid var(--sumi);
+  box-shadow: 0 0 0 4px var(--kaya), 6px 8px 0 4px #0E1424;
+}
+.sq {
+  position: relative; padding: 0; background: transparent;
+  border: 0; border-right: 1px solid var(--sumi); border-bottom: 1px solid var(--sumi);
+}
+.sq:nth-child(9n) { border-right: 0; }
+.sq:nth-child(n+73) { border-bottom: 0; }
+/* 星 */
+.sq[data-r="2"][data-c="2"]::after, .sq[data-r="2"][data-c="5"]::after,
+.sq[data-r="5"][data-c="2"]::after, .sq[data-r="5"][data-c="5"]::after {
+  content: ''; position: absolute; right: -3px; bottom: -3px; width: 5px; height: 5px; border-radius: 50%; background: var(--sumi); z-index: 1;
+}
+.sq.last { background: rgba(194,59,44,.16); }
+.sq.sel { background: rgba(233,196,106,.6); }
+.sq.tgt::before {
+  content: ''; position: absolute; left: 50%; top: 50%; width: 26%; height: 26%;
+  transform: translate(-50%, -50%); background: rgba(38,50,90,.55); z-index: 2;
+}
+.sq.tgt.cap::before { width: 86%; height: 86%; background: transparent; border: 3px solid rgba(38,50,90,.6); }
+
+/* 駒 */
+.pc {
+  position: absolute; inset: 7% 11% 4%;
+  display: grid; place-items: center;
+  background: linear-gradient(170deg, #F6DFA8, #E4BF78);
+  clip-path: polygon(50% 0, 86% 15%, 100% 100%, 0 100%, 14% 15%);
+  filter: drop-shadow(1px 1px 0 rgba(43,33,22,.5));
+}
+.pc b { font-family: var(--koma); font-weight: 800; font-size: calc(var(--cell) * .5); color: var(--sumi); line-height: 1; padding-top: 12%; }
+.pc.prom b { color: var(--shu); }
+.pc.gote { transform: rotate(180deg); }
+.hp .pc { inset: 0; }
+.hp .pc b { font-size: calc(var(--cell) * .44); }
+
+/* 詰み印 */
+.stamp {
+  position: absolute; left: 50%; top: 50%; width: calc(var(--cell) * 3.2); height: calc(var(--cell) * 3.2);
+  display: grid; place-items: center; border-radius: 50%;
+  border: 6px double var(--shu); color: var(--shu); background: rgba(241,230,204,.55);
+  font-family: var(--koma); font-weight: 800; font-size: calc(var(--cell) * 1.9);
+  transform: translate(-50%, -50%) rotate(-12deg); pointer-events: none; z-index: 5;
+}
+.stamp.on { animation: hanko .45s cubic-bezier(.2,1.6,.4,1) both; }
+@keyframes hanko {
+  from { transform: translate(-50%, -50%) rotate(-12deg) scale(2.4); opacity: 0; }
+  to { transform: translate(-50%, -50%) rotate(-12deg) scale(1); opacity: 1; }
+}
+
+/* メッセージ（RPG風の会話窓） */
+.msg {
+  margin: 16px auto 8px; max-width: calc(var(--cell) * 9 + 26px); min-height: 3.6em;
+  padding: 10px 14px; background: #10162A; border: 4px double var(--washi);
+  white-space: pre-wrap;
+}
+.msg.good { border-color: var(--koke); }
+.msg.bad { border-color: var(--shu); }
+.kifu {
+  max-width: calc(var(--cell) * 9 + 26px); margin: 0 auto 12px; display: flex; flex-wrap: wrap; gap: 4px 10px;
+  font-size: .9rem;
+}
+.kifu .dim { opacity: .5; }
+.kifu .ng { color: #FFB4A8; }
+.controls { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
+.controls.after { margin-top: 12px; }
+
+/* 成り選択 */
+.promo { background: var(--ai-2); color: var(--washi); border: 4px double var(--washi); padding: 16px 20px; }
+.promo::backdrop { background: rgba(10,14,28,.6); }
+.promo p { margin: 0 0 12px; text-align: center; }
+.promo-btns { display: flex; gap: 14px; }
+.pbtn {
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  background: var(--kaya); border: 2px solid var(--sumi); padding: 8px 14px; color: var(--sumi);
+}
+.pbtn .pc { position: relative; inset: auto; width: 46px; height: 52px; }
+.pbtn .pc b { font-size: 26px; }
+
+/* バージョン表示 */
+.foot { max-width: 720px; margin: 0 auto; padding: 0 16px 24px; border-top: 2px solid var(--ai-3); }
+.version { margin: 10px 0 0; font-size: .75rem; opacity: .55; text-align: right; }
+
+@media (max-width: 420px) {
+  .top h1 { font-size: 1.25rem; }
+  .hub { font-size: .8rem; padding: 4px 8px; }
+  main { padding: 12px 8px 32px; }
+  .btn { padding: 7px 10px; font-size: .9rem; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .stamp.on { animation: none; }
+  .btn { transition: none; }
+}
