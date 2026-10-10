@@ -193,6 +193,9 @@ main { max-width: 720px; margin: 0 auto; padding: 16px 16px 40px; }
 .pbtn .pc { position: relative; inset: auto; width: 46px; height: 52px; }
 .pbtn .pc b { font-size: 26px; }
 
+/* 起動エラー表示 */
+.boot-error { margin: 0 0 16px; padding: 10px 14px; border: 4px double var(--shu); background: #2A1418; color: #FFB4A8; white-space: pre-wrap; font-size: .9rem; }
+
 /* バージョン表示 */
 .foot { max-width: 720px; margin: 0 auto; padding: 0 16px 24px; border-top: 2px solid var(--ai-3); }
 .version { margin: 10px 0 0; font-size: .75rem; opacity: .55; text-align: right; }

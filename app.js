@@ -29,6 +29,7 @@ const SAMPLE_PROBLEMS = [
 ];
 
 const S = window.Shogi;
+if (!S) throw new Error('shogi.js が読み込まれていません');
 const $ = (sel) => document.querySelector(sel);
 
 const state = {

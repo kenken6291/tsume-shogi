@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=DotGothic16&family=Shippori+Mincho+B1:wght@700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="style.css?v=1.1.1">
 </head>
 <body>
 <header class="top">
@@ -18,6 +18,7 @@
 </header>
 
 <main>
+  <p id="boot-error" class="boot-error" role="alert" hidden></p>
   <!-- 問題一覧 -->
   <section id="view-list">
     <div class="tabs" id="filters" role="tablist" aria-label="手数で絞り込み"></div>
@@ -82,8 +83,20 @@
   </div>
 </dialog>
 
-<script src="js/config.js"></script>
-<script src="js/shogi.js"></script>
-<script src="js/app.js"></script>
+<!-- 読み込み失敗・実行エラーを画面に表示 -->
+<script>
+  window.__showBootError = function (msg) {
+    var el = document.getElementById('boot-error');
+    if (!el) return;
+    el.hidden = false;
+    el.textContent = (el.textContent ? el.textContent + '\n' : '') + msg;
+  };
+  window.addEventListener('error', function (e) {
+    if (e.message) window.__showBootError('エラー: ' + e.message + (e.filename ? '（' + e.filename.split('/').pop() + ' ' + e.lineno + '行）' : ''));
+  });
+</script>
+<script src="config.js?v=1.1.1" onerror="__showBootError('config.js が見つかりません（index.htmlと同じ場所に置いてください）')"></script>
+<script src="shogi.js?v=1.1.1" onerror="__showBootError('shogi.js が見つかりません（index.htmlと同じ場所に置いてください）')"></script>
+<script src="app.js?v=1.1.1" onerror="__showBootError('app.js が見つかりません（index.htmlと同じ場所に置いてください）')"></script>
 </body>
 </html>
