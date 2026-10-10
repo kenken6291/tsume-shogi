@@ -83,6 +83,7 @@ main { max-width: 720px; margin: 0 auto; padding: 16px 16px 40px; }
 .pager { display: flex; justify-content: center; align-items: center; gap: 14px; margin-top: 16px; }
 .pager button { background: var(--ai-2); border: 2px solid var(--ai-3); padding: 4px 12px; }
 .pager button:disabled { opacity: .35; }
+.grid > p { grid-column: 1 / -1; }
 .note, .loading, .err { font-size: .85rem; opacity: .75; margin-top: 18px; }
 .err { color: #FFB4A8; opacity: 1; }
 
